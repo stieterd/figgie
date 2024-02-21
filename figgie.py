@@ -23,8 +23,6 @@ import pandas as pd
 class TradingBot:
 
     n_games = 0
-    orders = pandas.DataFrame()
-    trades = pandas.DataFrame()
 
     @staticmethod
     def on_trade_event(round_data: dict, round_history: dict) -> dict:
@@ -73,7 +71,7 @@ class TradingBot:
             raise Exception('error in on_trade_event')
 
     @staticmethod
-    def data_collection(round_data: dict, round_history: dict) -> bool:
+    def on_data_collection(round_data: dict, round_history: dict) -> bool:
         '''Gets called at the end of each game'''
         ## Put your code here ##
         try:
@@ -86,12 +84,6 @@ class TradingBot:
                 os.mkdir('figures')
 
             plt.savefig(f'figures/{goal_suit}_{TradingBot.n_games}.png')
-
-            TradingBot.diamonds = []
-            TradingBot.hearts = []
-
-            TradingBot.spades = []
-            TradingBot.clubs = []
 
             # return true if you want to terminate return false if you want to keep going
             return False
@@ -339,13 +331,15 @@ class FiggieGame:
             round_data = message[1]['round']
             round_history = message[1]['round_history']
             try:
-                exit_term = TradingBot.data_collection(round_data, round_history)
+                exit_term = TradingBot.on_data_collection(round_data, round_history)
             except Exception as e:
                 print(traceback.format_exc())
                 sys.exit()
 
             if not exit_term:
                 self.start_next_round(wsapp)
+            else:
+                sys.exit()
 
 
 if __name__ == "__main__":

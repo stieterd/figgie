@@ -24,9 +24,24 @@ import pandas as pd
 class TradingBot:
     n_games = 0
 
+
+    ### KEEP THIS METHOD ###
+    ##  insert your own code into it ##
     @staticmethod
     def on_trade_event(round_data: dict, round_history: dict) -> dict:
-        '''Gets called on each trade event'''
+        '''
+        :param round_data: dictionary containing the round data
+        :param round_history: dictionary containing all the trades and orders
+        :return: return a dictionary containing keys of suits you want to buy/sell: Diamonds, Hearts, Spades, Clubs
+
+        this method gets called on each event of the game, like: new sell order, new buy order, new trade
+        keep in mind that if you place a new buy order or sell order, you will trigger this event too
+
+        example of return:
+            A dictionary looking like: {'Diamonds': {'Sell': 5, 'Buy': 1}, 'Hearts': {'Buy': 2}}
+            if you want to place a Sell order on diamonds for 5 and a buy order on diamonds for 1 and a buy order on hearts for 2
+        '''
+
         try:
 
             current_orders = TradingBot.parse_current_orders(round_data)
@@ -36,7 +51,7 @@ class TradingBot:
                            'Spades': {}, 'Clubs': {}}
 
             # progress in percentages
-            game_progress = 1 - TradingBot.event_call_time_left(round_data, round_history) / 240
+            game_progress = 1 - TradingBot.parse_game_time_left(round_data, round_history) / FiggieGame.ROUND_LENGTH_SECONDS
             turning_point = 0.25
 
             sell_price = max(15 - game_progress * 12, 5) if game_progress < 0.90 else 2
@@ -71,10 +86,22 @@ class TradingBot:
             print(traceback.format_exc())
             raise Exception('error in on_trade_event')
 
+
+    ### KEEP THIS METHOD ###
+    ##  insert your own code into it ##
     @staticmethod
     def on_data_collection(round_data: dict, round_history: dict) -> bool:
-        '''Gets called at the end of each game'''
-        ## Put your code here ##
+        '''
+        :param round_data: dictionary containing the round data
+        :param round_history: dictionary containing all the trades and orders
+        :return: return a boolean representing the exit term
+            true: another round to start
+            false: stop game
+
+        this method gets called on the end of each round, you can use this to collect all the statistics of the
+        previously played round
+        '''
+
         try:
             goal_suit = round_data['goal_suit'][0]
             TradingBot.n_games += 1
@@ -93,20 +120,14 @@ class TradingBot:
             raise Exception('error in data_collection')
 
     @staticmethod
-    def parse_history(round_history):
-        history = round_history['game_updates']
-        result = {'Diamonds': {'Buy': [], 'Sell': []}, 'Hearts': {'Buy': [], 'Sell': []},
-                  'Spades': {'Buy': [], 'Sell': []}, 'Clubs': {'Buy': [], 'Sell': []}}
-        for element in history:
-            if element[0] != 'Order':
-                continue
-
-            result[element[1]['suit'][0]][element[1]['direction']].append(element[1]['metadata']['price'])
-
-        return result
-
-    @staticmethod
     def parse_current_hand(round_data: dict) -> dict:
+        '''
+        :param round_data: dictionary containing the round data
+        :return: dictionary containing the cards in your hand
+
+        example: {"Hearts": 3, "Spades": 1}
+            if you have 3 hearts and 1 spade in your hand
+        '''
         try:
             for user in round_data['chips_and_hands']:
                 if user['user']['display_name'] == FiggieGame.DISPLAY_NAME:
@@ -119,6 +140,14 @@ class TradingBot:
 
     @staticmethod
     def parse_current_orders(round_data: dict) -> dict:
+        '''
+        :param round_data: dictionary containing the round data
+        :return: dictionary containing orders currently on table with keys: offer and bid;
+            containing lists where each item is a dictionary with keys: suit, display_name, price
+
+        example: {"offer": [{'suit': 'Hearts', 'display_name': 'pjotr', 'price': 3}], "bid": []}
+            if pjotr placed a sell order of 3 on hearts
+        '''
         try:
             bid_offer_prices = {"offer": [], "bid": []}
 
@@ -143,6 +172,11 @@ class TradingBot:
 
     @staticmethod
     def parse_historical_orders(round_history: dict) -> pandas.DataFrame:
+        '''
+        :param round_history: dictionary containing all the trades and orders
+        :return: DataFrame with each order, the user who placed the order, the time of order, price, direction and card suit
+        '''
+
 
         orders = pd.DataFrame(round_history['game_updates'], columns=['Type', 'Details'])
         orders = orders[orders['Type'] == "Order"]
@@ -158,12 +192,17 @@ class TradingBot:
 
     @staticmethod
     def parse_historical_trades(round_history: dict) -> pandas.DataFrame:
+        '''
+        :param round_history: dictionary containing all the trades and orders
+        :return: DataFrame with each trade, the seller, the buyer, the time of trade, price, direction and card suit
+        '''
+
 
         trades = pd.DataFrame(round_history['trades'], columns=['Type', 'Details'])
         trades = trades[trades['Type'] == "Trade"]
         # trades['Metadata'] = trades['Details'].apply(lambda x: x['metadata'])
         trades['Seller'] = trades['Details'].apply(lambda x: x['seller']['display_name'])
-        trades['Seller'] = trades['Details'].apply(lambda x: x['buyer']['display_name'])
+        trades['Buyer'] = trades['Details'].apply(lambda x: x['buyer']['display_name'])
         trades['Price'] = trades['Details'].apply(lambda x: x['price'])
         trades['Time'] = pd.to_datetime(trades['Details'].apply(lambda x: x['time']))
         trades['Suit'] = trades['Details'].apply(lambda x: x['suit'][0])
@@ -173,7 +212,13 @@ class TradingBot:
         return trades
 
     @staticmethod
-    def event_call_time_left(round_data: dict, round_history: dict):
+    def parse_game_time_left(round_data: dict, round_history: dict):
+
+        '''
+        :param round_data: dictionary containing the round data
+        :param round_history: dictionary containing all the trades and orders
+        :return: float value with the time left until game finished
+        '''
 
         if len(round_history['game_updates']) == 0:
             return 240
@@ -190,6 +235,15 @@ class TradingBot:
 
     @staticmethod
     def draw_current_timeline(round_history):
+        '''
+        :param round_history: dictionary containing all the trades and orders
+
+        creates a plot with 4 figures for each card type
+        with green line representing the trades done
+        with red line representing the sell orders
+        with blue line representing the buy orders
+        '''
+
         colors = ['b-', 'r-']
 
         orders = TradingBot.parse_historical_orders(round_history)
@@ -220,6 +274,7 @@ class TradingBot:
 class FiggieGame:
     NBOTS = 4
     DISPLAY_NAME = "pjotr"
+    ROUND_LENGTH_SECONDS = 240  # seconds a round takes
 
     def __init__(self):
         self.header = {

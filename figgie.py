@@ -20,8 +20,8 @@ import matplotlib.animation as animation
 from datetime import datetime
 import pandas as pd
 
-class TradingBot:
 
+class TradingBot:
     n_games = 0
 
     @staticmethod
@@ -29,8 +29,8 @@ class TradingBot:
         '''Gets called on each trade event'''
         try:
 
-            current_orders = TradingBot.parse_orders(round_data)
-            hand = TradingBot.parse_hand(round_data)
+            current_orders = TradingBot.parse_current_orders(round_data)
+            hand = TradingBot.parse_current_hand(round_data)
 
             result_bids = {'Diamonds': {}, 'Hearts': {},
                            'Spades': {}, 'Clubs': {}}
@@ -39,7 +39,7 @@ class TradingBot:
             game_progress = 1 - TradingBot.event_call_time_left(round_data, round_history) / 240
             turning_point = 0.25
 
-            sell_price = max(15 - game_progress*12, 5) if game_progress < 0.90 else 2
+            sell_price = max(15 - game_progress * 12, 5) if game_progress < 0.90 else 2
             buy_price = 3
 
             if game_progress > turning_point:
@@ -50,7 +50,8 @@ class TradingBot:
                 cur_buy_price = buy_price
                 for order in current_orders['offer']:
                     if order['suit'] == key:
-                        if order['price'] <= 6 and order['display_name'] != FiggieGame.DISPLAY_NAME and game_progress < turning_point:
+                        if order['price'] <= 6 and order[
+                            'display_name'] != FiggieGame.DISPLAY_NAME and game_progress < turning_point:
                             cur_buy_price = order['price']
                             break
 
@@ -92,10 +93,6 @@ class TradingBot:
             raise Exception('error in data_collection')
 
     @staticmethod
-    def parse_starting_statistics(round_history):
-        pass
-
-    @staticmethod
     def parse_history(round_history):
         history = round_history['game_updates']
         result = {'Diamonds': {'Buy': [], 'Sell': []}, 'Hearts': {'Buy': [], 'Sell': []},
@@ -109,7 +106,7 @@ class TradingBot:
         return result
 
     @staticmethod
-    def parse_hand(round_data):
+    def parse_current_hand(round_data: dict) -> dict:
         try:
             for user in round_data['chips_and_hands']:
                 if user['user']['display_name'] == FiggieGame.DISPLAY_NAME:
@@ -121,7 +118,7 @@ class TradingBot:
             raise Exception('error in parse_hand')
 
     @staticmethod
-    def parse_orders(round_data):
+    def parse_current_orders(round_data: dict) -> dict:
         try:
             bid_offer_prices = {"offer": [], "bid": []}
 
@@ -145,24 +142,7 @@ class TradingBot:
             raise Exception('error in parse_orders')
 
     @staticmethod
-    def event_call_time_left(round_data, round_history):
-
-            if len(round_history['game_updates']) == 0:
-                return 240
-
-            if round_history['game_updates'][0][0] == 'Trade':
-                result = datetime.strptime(round_data['end_time'].split('.')[0], '%Y-%m-%d %H:%M:%S') - datetime.strptime(round_history['game_updates'][0][1]['time'].split('.')[0], '%Y-%m-%d %H:%M:%S')
-            else:
-                result = datetime.strptime(round_data['end_time'].split('.')[0],
-                                           '%Y-%m-%d %H:%M:%S') - datetime.strptime(
-                    round_history['game_updates'][0][1]['metadata']['time'].split('.')[0], '%Y-%m-%d %H:%M:%S')
-
-            return result.total_seconds()
-
-
-    @staticmethod
-    def draw_current_timeline(round_history):
-        colors = ['b-', 'r-']
+    def parse_historical_orders(round_history: dict) -> pandas.DataFrame:
 
         orders = pd.DataFrame(round_history['game_updates'], columns=['Type', 'Details'])
         orders = orders[orders['Type'] == "Order"]
@@ -173,6 +153,11 @@ class TradingBot:
         orders['Suit'] = orders['Details'].apply(lambda x: x['suit'][0])
         orders['Direction'] = orders['Details'].apply(lambda x: x['direction'])
         orders.drop(columns=['Details', 'Metadata'], inplace=True)
+
+        return orders
+
+    @staticmethod
+    def parse_historical_trades(round_history: dict) -> pandas.DataFrame:
 
         trades = pd.DataFrame(round_history['trades'], columns=['Type', 'Details'])
         trades = trades[trades['Type'] == "Trade"]
@@ -185,30 +170,51 @@ class TradingBot:
         trades['Direction'] = trades['Details'].apply(lambda x: x['direction'])
         trades.drop(columns=['Details'], inplace=True)
 
-        TradingBot.trades = trades
-        TradingBot.orders = orders
+        return trades
+
+    @staticmethod
+    def event_call_time_left(round_data: dict, round_history: dict):
+
+        if len(round_history['game_updates']) == 0:
+            return 240
+
+        if round_history['game_updates'][0][0] == 'Trade':
+            result = datetime.strptime(round_data['end_time'].split('.')[0], '%Y-%m-%d %H:%M:%S') - datetime.strptime(
+                round_history['game_updates'][0][1]['time'].split('.')[0], '%Y-%m-%d %H:%M:%S')
+        else:
+            result = datetime.strptime(round_data['end_time'].split('.')[0],
+                                       '%Y-%m-%d %H:%M:%S') - datetime.strptime(
+                round_history['game_updates'][0][1]['metadata']['time'].split('.')[0], '%Y-%m-%d %H:%M:%S')
+
+        return result.total_seconds()
+
+    @staticmethod
+    def draw_current_timeline(round_history):
+        colors = ['b-', 'r-']
+
+        orders = TradingBot.parse_historical_orders(round_history)
+        trades = TradingBot.parse_historical_trades(round_history)
 
         plt.clf()
 
-        for pos, suit in enumerate(sorted(TradingBot.orders['Suit'].unique())):
-            for idx, direction in enumerate(sorted(TradingBot.orders['Direction'].unique())):
-                temp_df = TradingBot.orders[(TradingBot.orders['Direction'] == direction) & (TradingBot.orders['Suit'] == suit)]
+        for pos, suit in enumerate(sorted(orders['Suit'].unique())):
+            for idx, direction in enumerate(sorted(orders['Direction'].unique())):
+                temp_df = orders[(orders['Direction'] == direction) & (orders['Suit'] == suit)]
                 plt.subplot(2, 2, 1 + pos)
                 plt.plot(temp_df['Time'], temp_df['Price'], colors[idx], marker=None, label=direction)
 
-            temp_trades = TradingBot.trades[TradingBot.trades['Suit'] == suit]
+            temp_trades = trades[trades['Suit'] == suit]
             plt.subplot(2, 2, 1 + pos)
             plt.plot(temp_trades['Time'], temp_trades['Price'], 'go-')
 
             plt.title(suit)
             plt.xlabel('Time')
             plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-            plt.xticks([TradingBot.orders['Time'].min(), TradingBot.orders['Time'].max()], rotation=45)
+            plt.xticks([orders['Time'].min(), orders['Time'].max()], rotation=45)
             plt.ylim(0, 30)
             plt.ylabel('Price')
 
         plt.tight_layout()
-
 
 
 class FiggieGame:
@@ -260,7 +266,8 @@ class FiggieGame:
     def add_order(wsapp, direction: str, suit: str,
                   price: int):  # direction: Buy or Sell, suit: Diamonds, Clubs, Spades, Hearts
         wsapp.send(json.dumps(
-            ["Add_order", {"order": {"suit": [str(suit)], "price": int(price), "direction": str(direction), "is_ioc": False}}]))
+            ["Add_order",
+             {"order": {"suit": [str(suit)], "price": int(price), "direction": str(direction), "is_ioc": False}}]))
 
     # @staticmethod
     # def cancel_order(wsapp, direction: str, suit: str,
